@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Moth rings and cuffs: generative jewellery specimens</title>
+<style>
+:root{--bg:#d8dcd0;--fg:#1d211b;--mut:#5d6657;--line:#b4baa9;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101311;--fg:#e4e8dc;--mut:#8b9582;--line:#2b312a}}
+:root[data-theme="dark"]{--bg:#101311;--fg:#e4e8dc;--mut:#8b9582;--line:#2b312a}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:13px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column}
+header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--line)}
+header b{font-size:15px;letter-spacing:.02em}
+header span.h{color:var(--mut);margin-left:10px}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#msg{color:var(--mut);font-size:12px}
+button{font:inherit;color:var(--fg);background:none;border:1px solid var(--fg);padding:6px 12px;cursor:pointer;border-radius:2px}
+button:hover,button:focus-visible{background:var(--fg);color:var(--bg);outline:none}
+button[hidden]{display:none}
+#main{flex:1;min-height:0;display:flex}
+#stage{position:relative;flex:1;min-height:0;min-width:0;overflow:hidden}
+#panel{width:270px;flex:none;overflow-y:auto;border-left:1px solid var(--line);padding:10px 14px;font-size:12px}
+#panel[hidden]{display:none}
+.sec{margin:14px 0 6px;font-weight:600;font-size:13px}
+.row{display:grid;grid-template-columns:1fr 1.2fr 34px;gap:6px;align-items:center;margin:5px 0;color:var(--mut)}
+.row input[type=range]{width:100%;min-width:0}
+.row select{width:100%;grid-column:2/4;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);padding:3px}
+.row input[type=checkbox]{justify-self:start}
+.row output{color:var(--fg);text-align:right}
+.row2{display:flex;flex-direction:column;gap:7px;color:var(--mut);align-items:flex-start}
+.row2 input[type=number]{width:90px;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);padding:3px}
+@media (max-width:700px){#main{flex-direction:column}#panel{width:auto;max-height:42%;border-left:0;border-top:1px solid var(--line)}}
+canvas{display:block;width:100%;height:100%;cursor:pointer}
+.cap{position:absolute;transform:translate(-50%,0);white-space:nowrap;color:var(--mut);font-size:11px;text-align:center;pointer-events:none}
+.cap i{display:block;color:var(--fg);font-style:normal}
+.cap.sel i{border-bottom:1px solid var(--fg)}
+</style></head><body>
+<header><div><b>Moth rings and cuffs</b><span class="h">click a specimen to select it</span></div>
+<div class="actions"><span id="msg"></span><button id="ctl">Controls</button><button id="reroll">Reroll selected</button><button id="dl" hidden>Download STL</button><button id="newset">New set</button></div></header>
+<div id="main"><div id="stage"><canvas id="cv"></canvas></div><aside id="panel"></aside></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const rngFrom=s=>()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+const pick=(r,a)=>a[Math.floor(r()*a.length)],range=(r,a,b)=>a+(b-a)*r(),v=(x,y,z)=>new THREE.Vector3(x,y,z);
+const PAL={
+ luna:{w:['#d9ffb0','#4fd18b','#0a5e55'],acc:'#fff7c2',e:['#7b2cbf','#ffd166','#12091f'],vein:'#073b36'},
+ ember:{w:['#ffe08a','#ff5d73','#4a0d2e'],acc:'#fff1cf',e:['#08d9b0','#1182b3','#021b2b'],vein:'#2b0719'},
+ peacock:{w:['#5be7ff','#7a2cf5','#190a4d'],acc:'#ff9ecd',e:['#ffd60a','#ff4d6d','#10002b'],vein:'#0c0230'},
+ toxic:{w:['#e6ff4d','#ff8a00','#7a0f1f'],acc:'#241033',e:['#2b0a3d','#f5f5dc','#000000'],vein:'#2a0610'},
+ orchid:{w:['#ffd1f5','#c77dff','#3a0ca3'],acc:'#ffffff',e:['#00f5d4','#fee440','#240046'],vein:'#1b0545'},
+ abyss:{w:['#9ff7ff','#ff4fd8','#14123a'],acc:'#fff3a0',e:['#fff3a0','#14123a','#ff4fd8'],vein:'#0b0a26'},
+ gilt:{w:['#f6e3a1','#c9a13b','#2a2112'],acc:'#fff3c4',e:['#2a2112','#f6e3a1','#000000'],vein:'#1d160a'},
+ pewter:{w:['#f2f4f7','#9aa3ad','#2d3238'],acc:'#ffffff',e:['#2d3238','#f2f4f7','#000000'],vein:'#1c1f23'},
+ scorched:{w:['#e0b74a','#4a3b1b','#0c0a06'],acc:'#f3d27a',e:['#e0b74a','#0c0a06','#f3d27a'],vein:'#0a0805'}};
+const KEYS=Object.keys(PAL),METAL={silver:'#cfd3d8',gold:'#d9b44a',bone:'#e7e3d6',jet:'#2b2926'};
+const SH_F=['round','swept','forked','tattered'],SH_H=['round','tail','forked','tattered'],EDGES=['smooth','scalloped','spiked','feathered'],PATS=['rings','rays','spots','plain'];
+const SPAN={round:1.25,swept:.85,forked:1.15,tattered:1.05,tail:1},ER={tiny:.06,normal:.13,giant:.3};
+const OPEN={A:(i,j)=>(j>=2&&j<=4&&i%8>=2&&i%8<=5)||(j>=6&&j<=7&&i%8>=3&&i%8<=4),B:(i,j)=>j>=1&&j<=5&&i%8>=2&&i%8<=5&&((i>>3)&1)===0};
+const DEP={finger:.1,cuff:.05},MM={finger:18.3,cuff:35.8};
+/* print rules (mm): inner opening; min bridge between cut-outs; min eye / slit / bead / thread size. FLAT = how much the form is flattened along the finger/wrist (1 = as 4.0) */
+const PRINT={finger:{open:17.5},cuff:{open:62}},BRIDGE=1.0,MINE={round:2.0,slit:2.8,double:3.0},SLITW=.8,BEADMIN=.6,THREAD=.45,FLAT=.75;let KK=18.3;
+const SLOTS={pair:[[1,1],[1,-1],[0,1],[0,-1]],odd1:[[1,1]],odd3:[[1,1],[1,-1],[0,1]],odd5:[[1,1],[1,-1],[0,1],[0,-1],[0,1]],many:[[1,1],[1,-1],[0,1],[0,-1],[1,1],[0,-1],[1,-1]]};
+const mats=new Map();
+const M=c=>{if(!mats.has(c))mats.set(c,new THREE.MeshStandardMaterial({color:c,flatShading:true,side:THREE.DoubleSide,roughness:.85,metalness:0}));return mats.get(c)};
+
+function makeGenes(r,ov){ov=ov||{};
+ const g={form:pick(r,['finger','cuff']),make:pick(r,['body','swarm','wings']),turns:pick(r,[1,2,3]),nsw:pick(r,[4,5,6,7]),anat:pick(r,['pair','odd1','odd3','odd3','odd5','many','many']),drift:range(r,0,.4),wob:range(r,.08,.22),stripe:r()<.6,
+ pal:pick(r,KEYS),pat:pick(r,PATS),moths:pick(r,[1,2,2]),pairs:pick(r,[1,2,2]),
+ fshape:pick(r,SH_F),hshape:pick(r,SH_H),edge:pick(r,EDGES),k:Math.floor(range(r,6,14)),sym:pick(r,['mirror','half','broken']),
+ attach:pick(r,['perch','rise','inner']),wattach:pick(r,['wrap','innerwrap']),tau:range(r,.5,1.1),open:pick(r,[0,'A','B','A']),
+ eyes:pick(r,[0,1,2,5,9]),eplace:pick(r,['center','edge','corner','band']),esize:pick(r,['tiny','normal','giant']),etype:pick(r,['round','slit','double']),
+ sc:pick(r,[.55,.8,1.1]),flat:FLAT};
+ Object.assign(g,ov);
+ if(g.make==='wings'&&!('attach' in ov))g.attach=g.wattach;
+ if(g.make==='swarm'&&g.anat==='many'&&!('anat' in ov))g.anat='odd3';
+ if(g.eplace==='band'&&g.make!=='body')g.eplace='center';
+ return g}
+function wingParams(r,g,fore,broken){return{shape:broken?pick(r,fore?SH_F:SH_H):(fore?g.fshape:g.hshape),edge:broken?pick(r,EDGES):g.edge,
+ k:broken?Math.floor(range(r,5,15)):g.k,ph1:r()*6.28,ph2:r()*6.28,pal:broken?pick(r,KEYS):g.pal,pat:broken?pick(r,PATS):g.pat,ts:Math.floor(r()*1e9),open:g.open}}
+function rad(p,u){if(p.edge!=='spiked')return rad0(p,u);const d=1/96,c=x=>rad0(p,Math.min(1,Math.max(0,x)));return .25*c(u-d)+.5*c(u)+.25*c(u+d)}
+function rad0(p,u){
+ let r=1;
+ if(p.shape==='swept')r=.45+.9*u;
+ else if(p.shape==='forked')r=.5+.5*Math.abs(Math.cos(u*Math.PI*2));
+ else if(p.shape==='tattered')r=.72+.16*Math.sin(u*17+p.ph1)+.12*Math.sin(u*31+p.ph2);
+ else if(p.shape==='tail')r=.55+.95*Math.exp(-Math.pow((u-.2)/.08,2));
+ const t=u*p.k,f=t%1;
+ if(p.edge==='scalloped')r*=.84+.16*Math.abs(Math.sin(t*Math.PI));
+ else if(p.edge==='spiked')r*=.45+.55*Math.pow(Math.abs(f-.5)*2,2.5);
+ else if(p.edge==='feathered')r*=.6+.4*f;
+ return r}
+
+function wingTex(p){
+ const P=PAL[p.pal],r=rngFrom(p.ts),c=document.createElement('canvas');c.width=c.height=256;const x=c.getContext('2d');
+ const gr=x.createRadialGradient(0,128,0,0,128,250);gr.addColorStop(0,P.w[0]);gr.addColorStop(.5,P.w[1]);gr.addColorStop(1,P.w[2]);
+ x.fillStyle=gr;x.fillRect(0,0,256,256);x.strokeStyle=P.acc;x.fillStyle=P.acc;
+ if(p.pat==='rings'){const n=3+Math.floor(r()*4);x.lineWidth=5;for(let i=0;i<n;i++){x.beginPath();x.arc(0,128,40+i*(200/n)+r()*10,-1.5,1.5);x.stroke()}}
+ else if(p.pat==='rays'){const n=5+Math.floor(r()*6);x.lineWidth=4;for(let i=0;i<n;i++){x.beginPath();x.moveTo(0,128);x.lineTo(260,128+(i-(n-1)/2)*50);x.stroke()}}
+ else if(p.pat==='spots'){for(let i=0;i<30;i++){x.beginPath();x.arc(60+r()*190,r()*256,3+r()*9,0,7);x.fill()}}
+ return new THREE.CanvasTexture(c)}
+
+function eyeRaised(t,er,P,z0,hu,drop){er=Math.max(er,MINE[t]/KK);
+ const g=new THREE.Group(),[a,b,c]=P.e;
+ const cyl=(col,rr,k,sx=1,dx=0)=>{const h=hu*k+drop;const m=new THREE.Mesh(new THREE.CylinderGeometry(rr,rr,h,20).rotateX(Math.PI/2),M(col));m.position.set(dx,0,z0-drop+h/2);m.scale.x=sx;g.add(m)};
+ cyl(a,er,1);cyl(b,er*.68,2);
+ if(t==='double'){cyl(c,er*.24,3,1,-er*.3);cyl(c,er*.24,3,1,er*.3)}else cyl(c,er*.36,3,t==='slit'?Math.min(1,Math.max(.22,SLITW/KK/(er*.72))):1);
+ return g}
+function eyeBall(t,er,P,p,n){er=Math.max(er,2.2*MINE[t]/KK);
+ const g=new THREE.Group(),s=new THREE.Mesh(new THREE.SphereGeometry(1,14,10),M(P.e[1]));
+ s.scale.setScalar(er*.9);g.add(s);g.add(eyeRaised(t,er*.5,P,er*.9*.78,er*.12,0));
+ g.quaternion.setFromUnitVectors(v(0,0,1),n);g.position.copy(p).addScaledVector(n,er*.3);return g}
+
+/* F flattens the form along the finger/wrist axis: local y when wrapped, local x (which is the ring axis) for perched / raised moths */
+function makeT(mode,Rc,inward,tau,zoff,F){F=F||1;
+ const T=(x,y,z)=>{z+=zoff;
+  if(mode==='wrap'){const ang=x/Rc,rr=inward?Rc-z:Rc+z;return v(rr*Math.sin(ang),y*F,rr*Math.cos(ang))}
+  if(mode==='rise')return v(x*F*Math.cos(tau),y,z+Math.abs(x*F)*Math.sin(tau));
+  return v(x*F,y,z)};
+ T.inv=mode==='wrap'&&inward;T.wrap=mode==='wrap';return T}
+
+/* one wing: a polar grid (so it can bend), cut cells give openwork, solid walls for printing */
+function wingParts(p,R,depth,root,phi,sgn,eyesN,g,r,T){
+ const P=PAL[p.pal],out=new THREE.Group(),span=SPAN[p.shape]*.8,N=48,Mr=9,c0=Math.cos(phi),s0=Math.sin(phi);
+ const L2G=(xl,yl)=>[sgn*(root[0]+xl*c0-yl*s0),root[1]+xl*s0+yl*c0];
+ const vt=[[...L2G(0,0),0,0]];
+ for(let j=1;j<=Mr;j++)for(let i=0;i<=N;i++){const u=i/N,a=(u-.5)*2*span,rr=rad(p,u)*R*j/Mr,xl=rr*Math.cos(a),yl=rr*Math.sin(a);vt.push([...L2G(xl,yl),xl,yl])}
+ const vi=(i,j)=>j===0?0:1+(j-1)*(N+1)+i,tris=[],OP=OPEN[p.open];
+ const F=g.flat,EY=[];for(let i=0;i<eyesN;i++){let u,rr;
+  if(g.eplace==='center'){u=.5+(i-(eyesN-1)/2)*.12;rr=R*(.45+.15*(i%2))}
+  else if(g.eplace==='edge'){u=r();rr=rad(p,u)*R*.86}
+  else{u=range(r,.05,.25);rr=rad(p,u)*R*range(r,.35,.8)}
+  const a=(u-.5)*2*span;EY.push({pp:L2G(rr*Math.cos(a),rr*Math.sin(a)),er:Math.max(ER[g.esize]*R,MINE[g.etype]/KK)})}
+ const cutOK=(i,j)=>{const u=(i+.5)/N,ra=rad(p,u)*R,w=4*(2*span/N)*ra*j/Mr,h=ra/Mr,bu=BRIDGE/KK/F;if(w<bu||h<bu)return false;
+  const a=(u-.5)*2*span,rm=ra*(j+.5)/Mr,q=L2G(rm*Math.cos(a),rm*Math.sin(a));
+  return!EY.some(e=>Math.hypot(q[0]-e.pp[0],q[1]-e.pp[1])<e.er*1.3+h)};
+ for(let j=0;j<Mr;j++)for(let i=0;i<N;i++){if(OP&&OP(i,j)&&cutOK(i,j))continue;const a=vi(i,j),b=vi(i+1,j),c=vi(i+1,j+1),d=vi(i,j+1);tris.push([a,d,c]);if(a!==b)tris.push([a,c,b])}
+ if((sgn<0)!==!!T.inv)tris.forEach(t=>{const q=t[1];t[1]=t[2];t[2]=q});
+ const tp=vt.map(q=>T(q[0],q[1],depth)),bt=vt.map(q=>T(q[0],q[1],0)),P3=[],UV=[],S=1.4*R;
+ const push=(arr,k)=>{P3.push(arr[k].x,arr[k].y,arr[k].z);UV.push(vt[k][2]/S,.5+vt[k][3]/(2*S))};
+ const es=new Set();tris.forEach(t=>{for(let k=0;k<3;k++)es.add(t[k]+'_'+t[(k+1)%3])});
+ tris.forEach(t=>{push(tp,t[0]);push(tp,t[1]);push(tp,t[2]);push(bt,t[0]);push(bt,t[2]);push(bt,t[1]);
+  for(let k=0;k<3;k++){const u=t[k],w=t[(k+1)%3];if(!es.has(w+'_'+u)){push(tp,u);push(bt,u);push(tp,w);push(tp,w);push(bt,u);push(bt,w)}}});
+ const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(P3,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(UV,2));
+ out.add(new THREE.Mesh(geo,new THREE.MeshStandardMaterial({map:wingTex(p),flatShading:true,side:THREE.DoubleSide,roughness:.8})));
+ const fg=new THREE.Group(),vh=depth*.35;
+ for(let i=8;i<N;i+=8){const u=i/N,a=(u-.5)*2*span,rr=rad(p,u)*R,m=L2G(rr*Math.cos(a)*.5,rr*Math.sin(a)*.5),
+   b=new THREE.Mesh(new THREE.BoxGeometry(rr,.06,vh+.012,Math.max(2,Math.ceil(rr*10)),1,1),M(P.vein));
+  b.position.set(m[0],m[1],depth+vh/2-.006);const ang=phi+a;b.rotation.z=sgn>0?ang:Math.PI-ang;fg.add(b)}
+ EY.forEach(y=>{const e=eyeRaised(g.etype,y.er,P,depth,depth*.45,depth);e.position.set(y.pp[0],y.pp[1],0);
+  if(T.wrap)e.scale.y=1/F;else e.scale.x=1/F;fg.add(e)})
+ fg.updateMatrixWorld(true);
+ fg.traverse(o=>{if(!o.isMesh)return;const g2=o.geometry.clone();g2.applyMatrix4(o.matrixWorld);const pa=g2.attributes.position;
+  for(let i=0;i<pa.count;i++){const q=T(pa.getX(i),pa.getY(i),pa.getZ(i));pa.setXYZ(i,q.x,q.y,q.z)}
+  if(T.inv&&g2.index){const ix=g2.index.array;for(let i=0;i<ix.length;i+=3){const t=ix[i+1];ix[i+1]=ix[i+2];ix[i+2]=t}}
+  out.add(new THREE.Mesh(g2,o.material))});
+ return out}
+
+function frame(a,axis){const y=axis.clone().normalize(),x=new THREE.Vector3().crossVectors(y,a.n),q=new THREE.Quaternion();
+ return q.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x,y,a.n.clone()))}
+function addBody(inner,a,Rb,pal,axis,thick){
+ const grp=new THREE.Group(),mat=M(PAL[pal].vein);
+ const ell=(y,sx,sy,sz)=>{const m=new THREE.Mesh(new THREE.SphereGeometry(1,12,10),mat);m.position.set(0,y*Rb,0);m.scale.set(sx*Rb,sy*Rb,sz*Rb*thick);grp.add(m)};
+ ell(.12,.1,.17,.08);ell(-.27,.07,.3,.06);ell(.33,.05,.05,.05);
+ grp.quaternion.copy(frame(a,axis));grp.position.copy(a.p);grp.translateY(.095*Rb);inner.add(grp)}
+
+/* the moth is the jewellery: body = coiled abdomen, swarm = moths linked head to tail, wings = wings wrapped into the band */
+function buildPiece(seed,ov){
+ const r=rngFrom(seed),g=makeGenes(r,ov),root=new THREE.Group(),inner=new THREE.Group(),cuff=g.form==='cuff',depth=DEP[g.form];KK=MM[g.form];
+ root.add(inner);
+ const Rb=cuff?.95:.55,br0=cuff?.12:.085,P=PAL[g.pal],mk=g.make,wrapMode=mk==='wings',inward=g.attach==='inner'||g.attach==='innerwrap';
+ const th0=r()*6.283,anchors=[],nrm=(c,s)=>inward?v(-c,0,-s):v(c,0,s),cu=cuff?1.5:1;
+ if(mk==='body'){
+  const per=cuff?40:28,turns=g.turns,pitch=cuff?.2:.16,total=per*turns,m1=M(P.w[1]),m2=M(P.vein),beads=[],TP=[];
+  for(let i=0;i<=total;i++){const t=i/per,u=i/total,ang=th0+t*6.2832,br=Math.max(BEADMIN/KK,br0*(1.6-1.25*u)*(1+.3*Math.sin(i*2.1+th0*2))),y=((t-turns/2)*pitch+Math.sin(i*1.3+th0)*br0*.5*u)*g.flat,rb=Rb*(1+g.wob*Math.sin(t*5.1+th0)+g.drift*u),c=Math.cos(ang),s=Math.sin(ang);
+   const m=new THREE.Mesh(new THREE.SphereGeometry(1,10,8),(g.stripe&&i%4<2)?m2:m1);m.position.set(rb*c,y,rb*s);m.scale.setScalar(br);inner.add(m);beads.push({c,s,y,br,rb});TP.push(v(rb*c,y,rb*s));
+   if(i===3){const rr=inward?rb-br*.9:rb+br*.9;anchors.push({a:{p:v(rr*c,y,rr*s),n:nrm(c,s)},R:g.sc*cu,axis:v(-s,0,c)})}}
+  if(TP.length>2)inner.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(TP,false,'centripetal'),TP.length*2,Math.max(THREAD/KK,.012),6,false),m2));
+  if(g.eplace==='band')for(let k=0;k<g.eyes;k++){const b=beads[4+Math.floor(r()*(beads.length-4))];
+   inner.add(eyeBall(g.etype,ER[g.esize]*1.2,P,v((b.rb+b.br*.6)*b.c,b.y,(b.rb+b.br*.6)*b.s),v(b.c,0,b.s)))}}
+ else if(mk==='swarm'){
+  const k=g.nsw,base=6.2832*Rb/k/.95;
+  for(let i=0;i<k;i++){const ang=th0+(i+range(r,-.35,.35))*6.2832/k,c=Math.cos(ang),s=Math.sin(ang),size=base*pick(r,[.55,.8,1.2,1.7]),lay=r()<.3?1.22:1,yaw=range(r,-.6,.6);
+   const ax=v(-s*Math.cos(yaw),Math.sin(yaw),c*Math.cos(yaw));
+   anchors.push({a:{p:v(Rb*lay*c,range(r,-.25,.25)*size,Rb*lay*s),n:nrm(c,s)},R:size*g.sc*1.4,bs:size,thick:2.4,axis:ax})}}
+ else{
+  for(let m=0;m<g.moths;m++){const ang=r()*6.283,c=Math.cos(ang),s=Math.sin(ang),f=m?pick(r,[.5,.7,1]):1;
+   anchors.push({a:{p:v(Rb*c,range(r,-.1,.1),Rb*s),n:nrm(c,s)},R:Rb*2*g.sc*f,bs:g.sc*cu*.9*f,thick:1,axis:v(0,1,0),Rc:Rb*(1+.14*m),tilt:range(r,-.3,.3)})}}
+ /* print: a continuous thread through the swarm / a band under the wings, so the piece is one solid */
+ if(mk==='swarm'&&anchors.length>2){const pts=anchors.map(an=>an.a.p.clone()).sort((p,q)=>Math.atan2(p.z,p.x)-Math.atan2(q.z,q.x));
+  inner.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts,true,'centripetal'),pts.length*16,cuff?.035:.06,8,true),M(P.vein)))}
+ if(wrapMode){const hw=cuff?.3:.16,r0=Rb-.05,r1=Rb*(1+.14*(g.moths-1))+.03;
+  inner.add(new THREE.Mesh(new THREE.LatheGeometry([[r0,-hw/2],[r1,-hw/2],[r1,hw/2],[r0,hw/2],[r0,-hw/2]].map(q=>new THREE.Vector2(q[0],q[1])),72),M(P.vein)))}
+ const specs=[];
+ anchors.forEach(an=>{
+  const wpF=wingParams(r,g,1,g.sym==='broken'),wpH=wingParams(r,g,0,g.sym==='broken');
+  const seen={};
+  SLOTS[g.anat].forEach(([f,sg])=>{const key=f+'_'+sg,dup=seen[key];seen[key]=1;let wp=f?wpF:wpH,sc=1;
+   if(dup)wp=wingParams(r,g,f,true);
+   else if(sg<0){if(g.sym==='broken')wp=wingParams(r,g,f,true);else if(g.sym==='half'){wp={...wp,edge:pick(r,EDGES),pal:pick(r,KEYS)};sc=.6}}
+   if(r()<.45)sc*=pick(r,[.35,.6,1.5]);
+   specs.push({an,f,sg,wp,sc,dphi:dup?range(r,-.6,.6):0,graft:r()<.35})});
+  if(mk!=='body')addBody(inner,an.a,an.bs,g.pal,an.axis,an.thick)});
+ const ec=g.eplace==='band'?0:g.eyes;
+ specs.forEach((w,j)=>{
+  const R=w.an.R*w.sc,mode=wrapMode?'wrap':g.attach==='rise'?'rise':'flat',a=w.an.a,Rc=w.an.Rc||Rb,zo=w.f?0:-depth*.5;
+  const T=makeT(mode,inward?Rc+.01:Rc-.01,inward,g.tau,zo,g.flat),n=Math.floor(ec/specs.length)+(j<ec%specs.length?1:0);
+  const root0=w.f?[0,.15*R]:[0,-.05*R],phi0=(w.f?.45:-.55)+w.dphi;
+  const place=node=>{if(wrapMode){node.rotation.z=w.an.tilt||0;node.rotation.y=Math.atan2(a.p.x,a.p.z);node.position.y=a.p.y}else{node.quaternion.copy(frame(a,w.an.axis));node.position.copy(a.p)}inner.add(node)};
+  place(wingParts(w.wp,R,depth,root0,phi0,w.sg,n,g,r,T));
+  if(w.graft){const rr=R*range(r,.45,.8),aa=range(r,-.4,.4),c0=Math.cos(phi0),s0=Math.sin(phi0),xl=rr*Math.cos(aa),yl=rr*Math.sin(aa);
+   const T2=makeT(mode,inward?Rc+.01:Rc-.01,inward,g.tau,zo+depth*.6,g.flat);
+   place(wingParts(wingParams(r,g,r()<.5,true),R*.5,depth,[root0[0]+xl*c0-yl*s0,root0[1]+xl*s0+yl*c0],phi0+aa+range(r,-.8,.8),w.sg,0,g,r,T2))}});
+ g.count=anchors.length;const meas=measure(inner);
+ const box=new THREE.Box3().setFromObject(inner),c=box.getCenter(new THREE.Vector3()),sz=box.getSize(new THREE.Vector3());
+ inner.position.sub(c);root.scale.setScalar(1.15/(Math.max(sz.x,sz.y,sz.z)/2));
+ return{root,inner,g,meas}}
+
+/* measured before centring, in model units: opening, outer radius, width along the finger */
+function measure(inner){inner.updateMatrixWorld(true);let rmin=1e9,rmax=0,y0=1e9,y1=-1e9;const a=new THREE.Vector3();
+ inner.traverse(o=>{if(!o.isMesh)return;const pos=o.geometry.attributes.position;
+  for(let i=0;i<pos.count;i++){a.fromBufferAttribute(pos,i).applyMatrix4(o.matrixWorld);const q=Math.hypot(a.x,a.z);if(q<rmin)rmin=q;if(q>rmax)rmax=q;if(a.y<y0)y0=a.y;if(a.y>y1)y1=a.y}});
+ return{rmin,rmax,ax:y1-y0}}
+/* scale so the opening fits a finger / wrist. Wings are NOT resized. */
+function buildFit(seed,ov){const res=buildPiece(seed,ov),m=res.meas,k0=MM[res.g.form];
+ res.k=Math.min(1.3*k0,Math.max(.85*k0,PRINT[res.g.form].open/(2*m.rmin)));return res}
+
+/* STL export (zipped, since the page can only save allow-listed file types) */
+function stlBytes(p){
+ p.root.updateMatrixWorld(true);
+ const inv=new THREE.Matrix4().copy(p.inner.matrixWorld).invert(),k=p.k||MM[p.g.form];
+ const F=new THREE.Matrix4().makeScale(k,k,k).multiply(new THREE.Matrix4().makeRotationX(Math.PI/2));
+ const vs=[],a=new THREE.Vector3();
+ p.inner.traverse(o=>{if(!o.isMesh)return;
+  const m=new THREE.Matrix4().multiplyMatrices(inv,o.matrixWorld).premultiply(F),pos=o.geometry.attributes.position,idx=o.geometry.index,cnt=idx?idx.count:pos.count;
+  for(let i=0;i<cnt;i++){a.fromBufferAttribute(pos,idx?idx.getX(i):i).applyMatrix4(m);vs.push(a.x,a.y,a.z)}});
+ let minz=1e9;for(let i=2;i<vs.length;i+=3)minz=Math.min(minz,vs[i]);
+ const nt=vs.length/9,buf=new ArrayBuffer(84+nt*50),dv=new DataView(buf);dv.setUint32(80,nt,true);
+ const b=new THREE.Vector3(),c=new THREE.Vector3(),n=new THREE.Vector3(),d=new THREE.Vector3();
+ for(let t=0;t<nt;t++){const o=t*9;
+  for(let k=2;k<9;k+=3)vs[o+k]-=minz;
+  a.set(vs[o],vs[o+1],vs[o+2]);b.set(vs[o+3],vs[o+4],vs[o+5]);c.set(vs[o+6],vs[o+7],vs[o+8]);
+  n.subVectors(b,a).cross(d.subVectors(c,a)).normalize();
+  let q=84+t*50;[n.x,n.y,n.z].forEach(x=>{dv.setFloat32(q,x||0,true);q+=4});
+  for(let k=0;k<9;k++){dv.setFloat32(q,vs[o+k],true);q+=4}}
+ return new Uint8Array(buf)}
+function crc32(u){let c=-1;for(let i=0;i<u.length;i++){c^=u[i];for(let k=0;k<8;k++)c=(c>>>1)^(0xEDB88320&-(c&1))}return(c^-1)>>>0}
+function zipOne(name,data){
+ const nm=new TextEncoder().encode(name),crc=crc32(data),n=data.length,lh=new DataView(new ArrayBuffer(30)),ch=new DataView(new ArrayBuffer(46)),e=new DataView(new ArrayBuffer(22));
+ lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(12,0x21,true);lh.setUint32(14,crc,true);lh.setUint32(18,n,true);lh.setUint32(22,n,true);lh.setUint16(26,nm.length,true);
+ ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(14,0x21,true);ch.setUint32(16,crc,true);ch.setUint32(20,n,true);ch.setUint32(24,n,true);ch.setUint16(28,nm.length,true);
+ e.setUint32(0,0x06054b50,true);e.setUint16(8,1,true);e.setUint16(10,1,true);e.setUint32(12,46+nm.length,true);e.setUint32(16,30+nm.length+n,true);
+ return new Blob([lh,nm,data,ch,nm,e])}
+
+/* scene */
+const stage=document.getElementById('stage'),cv=document.getElementById('cv'),msg=document.getElementById('msg'),dlBtn=document.getElementById('dl');
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(30,1,1,80);
+scene.add(new THREE.AmbientLight(0xffffff,.85));
+const L1=new THREE.DirectionalLight(0xffffff,1);L1.position.set(3,5,4);scene.add(L1);
+const L2=new THREE.DirectionalLight(0xffffff,.4);L2.position.set(-4,-2,-3);scene.add(L2);
+const COUNT=6,CELL=3.2,pieces=[];let W=1,H=1,cols=4,rows=3,sel=0,seeds=[...Array(COUNT)].map((_,i)=>101+i*37);
+
+function place(){
+ cols=(W<560||W/H<.9)?2:3;rows=COUNT/cols;
+ pieces.forEach((p,i)=>p.root.position.set((i%cols-(cols-1)/2)*CELL,-(Math.floor(i/cols)-(rows-1)/2)*CELL,0));
+ const t=Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
+ camera.position.z=Math.max((rows*CELL/2)/t,(cols*CELL/2)/(t*camera.aspect))*1.08;camera.lookAt(0,0,0)}
+function resize(){W=stage.clientWidth;H=stage.clientHeight;renderer.setSize(W,H,false);camera.aspect=W/H;camera.updateProjectionMatrix();place()}
+const info=p=>p?'opening Ø'+(2*p.meas.rmin*p.k).toFixed(1)+' mm · width '+(p.meas.ax*p.k).toFixed(0)+' mm · outer Ø'+(2*p.meas.rmax*p.k).toFixed(0)+' mm':'';
+function select(i){sel=i;pieces.forEach((p,j)=>p.cap.classList.toggle('sel',j===i));msg.textContent=info(pieces[i]);refreshPanel()}
+function setPiece(i,seed,ov){ov=ov||{};
+ const old=pieces[i];
+ if(old){scene.remove(old.root);old.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material&&o.material.map)o.material.map.dispose()});old.cap.remove()}
+ const {root,inner,g,k,meas}=buildFit(seed,ov),cap=document.createElement('div');
+ cap.className='cap';cap.innerHTML='<i>#'+seed+'</i>';
+ stage.appendChild(cap);scene.add(root);
+ pieces[i]={root,inner,g,cap,seed,ov,k,meas,spd:range(rngFrom(seed),.25,.55)}}
+function build(){seeds.forEach((s,i)=>setPiece(i,s));place();select(Math.min(sel,COUNT-1))}
+
+const V=new THREE.Vector3(),clock=new THREE.Clock();
+function tick(){
+ requestAnimationFrame(tick);const dt=clock.getDelta(),t=clock.elapsedTime;
+ pieces.forEach(p=>{
+  p.root.rotation.y+=dt*p.spd;p.root.rotation.x=.45+Math.sin(t*.5+p.seed)*.08;
+  V.set(p.root.position.x,p.root.position.y-1.5,0).project(camera);
+  p.cap.style.left=(V.x*.5+.5)*W+'px';p.cap.style.top=(-V.y*.5+.5)*H+'px'});
+ renderer.render(scene,camera)}
+
+cv.addEventListener('pointerdown',e=>{
+ const b=cv.getBoundingClientRect(),x=e.clientX-b.left,y=e.clientY-b.top;let best=0,bd=1e12;
+ pieces.forEach((p,i)=>{V.copy(p.root.position).project(camera);const dx=(V.x*.5+.5)*W-x,dy=(-V.y*.5+.5)*H-y,d=dx*dx+dy*dy;if(d<bd){bd=d;best=i}});
+ select(best)});
+document.getElementById('reroll').onclick=()=>{setPiece(sel,Math.floor(Math.random()*1e6),pieces[sel].ov);place();select(sel)};
+document.getElementById('newset').onclick=()=>{seeds=seeds.map(()=>Math.floor(Math.random()*1e6));build()};
+let DL=null;
+dlBtn.onclick=async()=>{
+ if(!DL)return;const p=pieces[sel];
+ try{await DL.save({filename:'moth-wings-'+p.seed+'.zip',data:zipOne('moth-wings-'+p.seed+'.stl',stlBytes(p))});msg.textContent='Saved #'+p.seed+' (unzip for the .stl)'}
+ catch(e){msg.textContent=e&&e.code==='declined'?'':'Download unavailable here'}};
+(async()=>{try{DL=window.claude?await window.claude.use('downloads'):null}catch(e){DL=null}if(DL)dlBtn.hidden=false})();
+/* parametric controls */
+const O=(a)=>a.map(x=>[x,x]);
+const CTRL=[
+ ['sec','Ring'],
+ ['sel','form','Form',O(['finger','cuff'])],
+ ['sel','make','Moth makes the',[['body','Coiled body'],['swarm','Linked swarm'],['wings','Wrapped wings']]],
+ ['num','turns','Coil turns',1,4,1],['num','wob','Coil wobble',0,.4,.01],['num','drift','Coil drift',0,.8,.01],
+ ['num','nsw','Swarm moths',3,8,1],['num','moths','Wing-ring moths',1,3,1],
+ ['num','flat','Flatten width',.4,1,.01],
+ ['sec','Wings'],
+ ['sel','fshape','Forewing',O(SH_F)],['sel','hshape','Hindwing',O(SH_H)],['sel','edge','Edge',O(EDGES)],
+ ['num','k','Edge lobes',4,16,1],
+ ['sel','open','Openwork',[[0,'Solid'],['A','Filigree A'],['B','Filigree B']]],
+ ['num','sc','Wing size',.4,1.4,.01],
+ ['sel','sym','Symmetry',O(['mirror','half','broken'])],
+ ['sel','anat','Wing count',[['pair','4 (normal)'],['odd1','1'],['odd3','3'],['odd5','5'],['many','7']]],
+ ['sel','attach','Attachment',[['perch','Perched flat'],['rise','Raised V'],['inner','Inside, flat'],['wrap','Wrapped'],['innerwrap','Wrapped inside']]],
+ ['num','tau','Raise angle',.2,1.4,.01],
+ ['sec','Colour'],
+ ['sel','pal','Palette',O(KEYS)],['sel','pat','Pattern',O(PATS)],['chk','stripe','Striped body'],
+ ['sec','Eyes'],
+ ['num','eyes','Eye count',0,12,1],['sel','eplace','Placement',O(['center','edge','corner','band'])],
+ ['sel','esize','Size',O(['tiny','normal','giant'])],['sel','etype','Pupil',O(['round','slit','double'])]];
+const panel=document.getElementById('panel'),inputs={};let pend={},raf=0;
+const topRow=document.createElement('div');topRow.className='row2';
+topRow.innerHTML='<label>Seed <input id="seedIn" type="number" step="1"></label><label><input id="allBox" type="checkbox"> Apply changes to all 6</label><button id="resetOv">Reset changes</button>';
+panel.appendChild(topRow);
+const seedIn=document.getElementById('seedIn'),allBox=document.getElementById('allBox');
+CTRL.forEach(c=>{
+ if(c[0]==='sec'){const h=document.createElement('div');h.className='sec';h.textContent=c[1];panel.appendChild(h);return}
+ const type=c[0],key=c[1],row=document.createElement('label'),sp=document.createElement('span'),out=document.createElement('output');let inp;
+ row.className='row';sp.textContent=c[2];row.appendChild(sp);
+ if(type==='sel'){inp=document.createElement('select');c[3].forEach(o=>{const e=document.createElement('option');e.value=String(o[0]);e.textContent=o[1];inp.appendChild(e)})}
+ else if(type==='num'){inp=document.createElement('input');inp.type='range';inp.min=c[3];inp.max=c[4];inp.step=c[5]}
+ else{inp=document.createElement('input');inp.type='checkbox'}
+ row.appendChild(inp);if(type==='num')row.appendChild(out);panel.appendChild(row);inputs[key]={inp,out,type};
+ inp.addEventListener('input',()=>{
+  let val=type==='chk'?inp.checked:type==='num'?Number(inp.value):inp.value;
+  if(key==='open'&&val==='0')val=0;
+  if(type==='num')out.textContent=inp.value;
+  pend[key]=val;if(!raf)raf=requestAnimationFrame(flush)})});
+function flush(){
+ raf=0;const t=allBox.checked?pieces.map((_,i)=>i):[sel];
+ t.forEach(i=>{const p=pieces[i];Object.assign(p.ov,pend);setPiece(i,p.seed,p.ov)});
+ pend={};place();select(sel)}
+function refreshPanel(){
+ const p=pieces[sel];if(!p)return;seedIn.value=p.seed;
+ for(const k in inputs){const {inp,out,type}=inputs[k],val=p.g[k];
+  if(type==='chk')inp.checked=!!val;else{inp.value=String(val);if(type==='num')out.textContent=String(Math.round(val*100)/100)}}}
+seedIn.onchange=()=>{const n=Math.floor(Number(seedIn.value));if(isFinite(n)){setPiece(sel,n,pieces[sel].ov);place();select(sel)}};
+document.getElementById('resetOv').onclick=()=>{const t=allBox.checked?pieces.map((_,i)=>i):[sel];t.forEach(i=>setPiece(i,pieces[i].seed,{}));place();select(sel)};
+document.getElementById('ctl').onclick=()=>{panel.hidden=!panel.hidden};
+panel.hidden=innerWidth<700;
+new ResizeObserver(resize).observe(stage);
+addEventListener('resize',resize);
+resize();build();tick();
+</script></body></html>
