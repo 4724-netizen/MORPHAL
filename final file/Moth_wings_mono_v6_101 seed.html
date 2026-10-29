@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Moth rings and cuffs: generative jewellery specimens</title>
+<style>
+:root{--bg:#0c0c0d;--fg:#ececec;--mut:#8a8a8d;--line:#26262a;--stage1:#1d1d20;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#e8e8e9;--fg:#141414;--mut:#6b6b6e;--line:#c6c6c8;--stage1:#fafafa;color-scheme:light}}
+:root[data-theme="light"]{--bg:#e8e8e9;--fg:#141414;--mut:#6b6b6e;--line:#c6c6c8;--stage1:#fafafa;color-scheme:light}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:13px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column}
+header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--line)}
+header b{font-size:15px;letter-spacing:.14em;text-transform:uppercase;font-weight:500}
+header span.h{color:var(--mut);margin-left:10px}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#msg{color:var(--mut);font-size:12px;max-width:48vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+button{font:inherit;color:var(--fg);background:none;border:1px solid var(--fg);padding:6px 12px;cursor:pointer;border-radius:2px}
+button:hover,button:focus-visible{background:var(--fg);color:var(--bg);outline:none}
+button[hidden]{display:none}
+#main{flex:1;min-height:0;display:flex}
+#stage{background:radial-gradient(ellipse at 50% 42%,var(--stage1),var(--bg) 78%);position:relative;flex:1;min-height:0;min-width:0;overflow:hidden}
+#panel{width:270px;flex:none;overflow-y:auto;border-left:1px solid var(--line);padding:10px 14px;font-size:12px}
+#panel[hidden]{display:none}
+.sec{margin:14px 0 6px;font-weight:600;font-size:13px}
+.row{display:grid;grid-template-columns:1fr 1.2fr 34px;gap:6px;align-items:center;margin:5px 0;color:var(--mut)}
+.row input[type=range]{width:100%;min-width:0}
+.row select{width:100%;grid-column:2/4;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);padding:3px}
+.row input[type=checkbox]{justify-self:start}
+.row output{color:var(--fg);text-align:right}
+.row2{display:flex;flex-direction:column;gap:7px;color:var(--mut);align-items:flex-start}
+.row2 input[type=number]{width:90px;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);padding:3px}
+@media (max-width:700px){#main{flex-direction:column}#panel{width:auto;max-height:42%;border-left:0;border-top:1px solid var(--line)}}
+#fit{position:absolute;left:14px;top:12px;right:14px;font-size:14px;line-height:1.4;color:var(--fg);pointer-events:none;text-shadow:0 0 8px var(--bg)}
+canvas{display:block;width:100%;height:100%;cursor:pointer}
+.cap{position:absolute;transform:translate(-50%,0);white-space:nowrap;color:var(--mut);font-size:11px;text-align:center;pointer-events:none}
+.cap i{display:block;color:var(--fg);font-style:normal}
+.cap.sel i{border-bottom:1px solid var(--fg)}
+</style></head><body>
+<header><div><b>Moth wings</b><span class="h">rings and cuffs, one specimen at a time</span></div>
+<div class="actions"><span id="msg"></span><button id="ctl">Controls</button><button id="reroll">Reroll</button><button id="dlP" title="Printed in its curve: each moth a separate part, aligned, plus the coil body. Sized to the Fit settings.">STL: print in curve</button><button id="dlO" title="Everything merged into one STL, in its curve.">STL: one piece</button><button id="newset">New moth</button></div></header>
+<div id="main"><div id="stage"><canvas id="cv"></canvas><div id="fit"></div></div><aside id="panel"></aside></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const rngFrom=s=>()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+const pick=(r,a)=>a[Math.floor(r()*a.length)],range=(r,a,b)=>a+(b-a)*r(),v=(x,y,z)=>new THREE.Vector3(x,y,z);
+const PAL={
+ luna:{w:['#d9ffb0','#4fd18b','#0a5e55'],acc:'#fff7c2',e:['#7b2cbf','#ffd166','#12091f'],vein:'#073b36'},
+ ember:{w:['#ffe08a','#ff5d73','#4a0d2e'],acc:'#fff1cf',e:['#08d9b0','#1182b3','#021b2b'],vein:'#2b0719'},
+ peacock:{w:['#5be7ff','#7a2cf5','#190a4d'],acc:'#ff9ecd',e:['#ffd60a','#ff4d6d','#10002b'],vein:'#0c0230'},
+ toxic:{w:['#e6ff4d','#ff8a00','#7a0f1f'],acc:'#241033',e:['#2b0a3d','#f5f5dc','#000000'],vein:'#2a0610'},
+ orchid:{w:['#ffd1f5','#c77dff','#3a0ca3'],acc:'#ffffff',e:['#00f5d4','#fee440','#240046'],vein:'#1b0545'},
+ abyss:{w:['#9ff7ff','#ff4fd8','#14123a'],acc:'#fff3a0',e:['#fff3a0','#14123a','#ff4fd8'],vein:'#0b0a26'},
+ gilt:{w:['#f6e3a1','#c9a13b','#2a2112'],acc:'#fff3c4',e:['#2a2112','#f6e3a1','#000000'],vein:'#1d160a'},
+ pewter:{w:['#f2f4f7','#9aa3ad','#2d3238'],acc:'#ffffff',e:['#2d3238','#f2f4f7','#000000'],vein:'#1c1f23'},
+ scorched:{w:['#e0b74a','#4a3b1b','#0c0a06'],acc:'#f3d27a',e:['#e0b74a','#0c0a06','#f3d27a'],vein:'#0a0805'}};
+const KEYS=Object.keys(PAL),METAL={silver:'#cfd3d8',gold:'#d9b44a',bone:'#e7e3d6',jet:'#2b2926'};
+const SH_F=['round','swept','forked','tattered','feather','scroll'],SH_H=['round','tail','forked','tattered','feather','scroll'],EDGES=['smooth','scalloped','spiked','feathered'],PATS=['rings','rays','spots','plain'];
+const SPAN={round:1.25,swept:.85,forked:1.15,tattered:1.05,tail:1,feather:.75,scroll:.95},ER={tiny:.06,normal:.13,giant:.3};
+const OPEN={A:(i,j)=>(j>=2&&j<=4&&i%8>=2&&i%8<=5)||(j>=6&&j<=7&&i%8>=3&&i%8<=4),B:(i,j)=>j>=1&&j<=5&&i%8>=2&&i%8<=5&&((i>>3)&1)===0,
+ /* C: vein filigree like the openwork cuffs: open panels between solid ribs, a solid cross-bar and rim; the veins sit on the ribs */
+ C:(i,j)=>j>=2&&j<=7&&j!==5&&i%8>=1&&i%8<=6};
+const MM={finger:18.3,cuff:35.8},SIZES={cuff:{S:[56,44],M:[60,48],L:[64,52]},finger:{S:[16.5,16.5],M:[17.7,17.7],L:[18.9,18.9]}};
+/* inner opening in mm [width, depth]: preset size unless a custom width/depth is set */
+function fitDims(g){const t=SIZES[g.form][g.size]||SIZES[g.form].M,W=g.cw>0?g.cw:t[0],D=g.cd>0?g.cd:(g.cw>0&&g.form==='finger'?g.cw:t[1]);
+ /* a chosen inner circumference rescales the opening, keeping its width:depth shape, until the oval's perimeter matches */
+ if(g.circ>0){const k=g.circ/ovalPerim(W,D);return[W*k,D*k]}
+ return[W,D]}
+/* inner circumference of the a x b oval (Ramanujan), and a plain-language fit line */
+function ovalPerim(W,D){const a=W/2,b=D/2;return Math.PI*(3*(a+b)-Math.sqrt((3*a+b)*(a+3*b)))}
+function fitLine(g){const[W,D]=fitDims(g),c=ovalPerim(W,D),f=x=>(Math.round(x*10)/10).toFixed(1);
+ if(g.form==='finger'){const d=c/Math.PI,us=(d-11.63)/.8128;return 'Inner circumference '+f(c)+' mm ('+f(c/10)+' cm) · inner diameter ~'+f(d)+' mm · about US size '+f(us)}
+ return 'Inner circumference '+f(c)+' mm ('+f(c/10)+' cm) · opening '+f(W)+' x '+f(D)+' mm'+(g.gap>0?' · gap '+Math.round(g.gap)+' mm, so it slides on sideways and fits a wrist up to about '+f(c/10)+' cm':' · closed, so the hand must fit through '+f(D)+' mm')}
+/* arc length of an a x b ellipse between parameters t0..t1 */
+function ovalArc(a,b,t0,t1){const n=240;let s=0;for(let i=0;i<n;i++){const t=t0+(i+.5)/n*(t1-t0);s+=Math.hypot(a*Math.sin(t),b*Math.cos(t))}return s*(t1-t0)/n}
+/* half-angle, in the unrolled ring, of a cuff gap whose chord on the inner oval is g.gap mm */
+function gapHalf(g){const[W,D]=fitDims(g),a=W/2,b=D/2,h=Math.PI/2,tau=Math.asin(Math.min(.97,g.gap/(2*a)));return ovalArc(a,b,h-tau,h)/ovalArc(a,b,0,h)*h}
+const SLOTS={pair:[[1,1],[1,-1],[0,1],[0,-1]],odd1:[[1,1]],odd3:[[1,1],[1,-1],[0,1]],odd5:[[1,1],[1,-1],[0,1],[0,-1],[0,1]],many:[[1,1],[1,-1],[0,1],[0,-1],[1,1],[0,-1],[1,-1]]};
+const mats=new Map();
+/* no colour: every surface is the same satin metal, so the form carries the piece */
+const MAT=new THREE.MeshStandardMaterial({color:'#d3d5da',flatShading:true,side:THREE.DoubleSide,roughness:.36,metalness:.55});
+const M=()=>MAT;
+
+function makeGenes(r,ov){ov=ov||{};
+ const g={form:pick(r,['finger','cuff']),make:pick(r,['body','swarm','wings']),turns:pick(r,[1,2,3]),nsw:pick(r,[4,5,6,7]),anat:pick(r,['pair','odd1','odd3','odd3','odd5','many','many']),drift:range(r,0,.4),wob:range(r,.08,.22),stripe:r()<.6,
+ pal:pick(r,KEYS),pat:pick(r,PATS),moths:pick(r,[1,2,2]),pairs:pick(r,[1,2,2]),
+ fshape:pick(r,['round','swept','swept','feather','scroll','forked']),hshape:pick(r,['tail','tail','round','feather','scroll','forked']),edge:pick(r,['smooth','smooth','scalloped','feathered','spiked']),k:Math.floor(range(r,6,14)),sym:pick(r,['mirror','half','broken']),
+ attach:pick(r,['perch','rise','inner']),wattach:pick(r,['wrap','innerwrap']),tau:range(r,.5,1.1),open:pick(r,['C','C','C','A','B',0]),
+ eyes:pick(r,[0,1,2,5,9]),eplace:pick(r,['center','edge','corner','band']),esize:pick(r,['tiny','normal','giant']),etype:pick(r,['round','slit','double']),
+ sc:pick(r,[.55,.8,1.1]),size:'M',gap:30,cw:0,cd:0,circ:0,wall:0};
+ Object.assign(g,ov);
+ if(!(g.wall>0))g.wall=g.form==='cuff'?2.5:1.6;
+ /* cuff gap defaults to the inner depth: wide enough for the thickest wrist of that size to pass sideways, still narrower than the wrist is wide */
+ if(g.form==='cuff'&&!('gap' in ov))g.gap=Math.round(fitDims(g)[1]);
+ if(g.make==='wings'&&!('attach' in ov))g.attach=g.wattach;
+ if(g.make==='swarm'&&g.anat==='many'&&!('anat' in ov))g.anat='odd3';
+ if(g.eplace==='band'&&g.make!=='body')g.eplace='center';
+ return g}
+function wingParams(r,g,fore,broken){return{shape:broken?pick(r,fore?SH_F:SH_H):(fore?g.fshape:g.hshape),edge:broken?pick(r,EDGES):g.edge,
+ k:broken?Math.floor(range(r,5,15)):g.k,ph1:r()*6.28,ph2:r()*6.28,pal:broken?pick(r,KEYS):g.pal,pat:broken?pick(r,PATS):g.pat,ts:Math.floor(r()*1e9),open:g.open}}
+function rad(p,u){
+ let r=1;
+ if(p.shape==='swept')r=.45+.9*u;
+ else if(p.shape==='forked')r=.5+.5*Math.abs(Math.cos(u*Math.PI*2));
+ else if(p.shape==='tattered')r=.72+.16*Math.sin(u*17+p.ph1)+.12*Math.sin(u*31+p.ph2);
+ else if(p.shape==='tail')r=.55+.95*Math.exp(-Math.pow((u-.2)/.08,2));
+ else if(p.shape==='feather')r=.4+.75*Math.pow(Math.sin(Math.PI*u),.8);
+ else if(p.shape==='scroll')r=.5+.45*u+.55*Math.exp(-Math.pow((u-.9)/.06,2));
+ const t=u*p.k,f=t%1;
+ if(p.edge==='scalloped')r*=.84+.16*Math.abs(Math.sin(t*Math.PI));
+ else if(p.edge==='spiked')r*=.45+.55*Math.pow(Math.abs(f-.5)*2,2.5);
+ else if(p.edge==='feathered')r*=.6+.4*f;
+ return r}
+
+function wingTex(p){
+ const P=PAL[p.pal],r=rngFrom(p.ts),c=document.createElement('canvas');c.width=c.height=256;const x=c.getContext('2d');
+ const gr=x.createRadialGradient(0,128,0,0,128,250);gr.addColorStop(0,P.w[0]);gr.addColorStop(.5,P.w[1]);gr.addColorStop(1,P.w[2]);
+ x.fillStyle=gr;x.fillRect(0,0,256,256);x.strokeStyle=P.acc;x.fillStyle=P.acc;
+ if(p.pat==='rings'){const n=3+Math.floor(r()*4);x.lineWidth=5;for(let i=0;i<n;i++){x.beginPath();x.arc(0,128,40+i*(200/n)+r()*10,-1.5,1.5);x.stroke()}}
+ else if(p.pat==='rays'){const n=5+Math.floor(r()*6);x.lineWidth=4;for(let i=0;i<n;i++){x.beginPath();x.moveTo(0,128);x.lineTo(260,128+(i-(n-1)/2)*50);x.stroke()}}
+ else if(p.pat==='spots'){for(let i=0;i<30;i++){x.beginPath();x.arc(60+r()*190,r()*256,3+r()*9,0,7);x.fill()}}
+ return new THREE.CanvasTexture(c)}
+
+function eyeRaised(t,er,P,z0,hu,drop){
+ const g=new THREE.Group(),[a,b,c]=P.e;
+ const cyl=(col,rr,k,sx=1,dx=0)=>{const h=hu*k+drop;const m=new THREE.Mesh(new THREE.CylinderGeometry(rr,rr,h,20).rotateX(Math.PI/2),M(col));m.position.set(dx,0,z0-drop+h/2);m.scale.x=sx;g.add(m)};
+ cyl(a,er,1);cyl(b,er*.68,2);
+ if(t==='double'){cyl(c,er*.24,3,1,-er*.3);cyl(c,er*.24,3,1,er*.3)}else cyl(c,er*.36,3,t==='slit'?.22:1);
+ return g}
+function eyeBall(t,er,P,p,n){
+ const g=new THREE.Group(),s=new THREE.Mesh(new THREE.SphereGeometry(1,14,10),M(P.e[1]));
+ s.scale.setScalar(er*.9);g.add(s);g.add(eyeRaised(t,er*.5,P,er*.9*.78,er*.12,0));
+ g.quaternion.setFromUnitVectors(v(0,0,1),n);g.position.copy(p).addScaledVector(n,er*.3);return g}
+
+function makeT(mode,Rc,inward,tau,zoff){
+ const T=(x,y,z)=>{z+=zoff;
+  if(mode==='wrap'){const ang=x/Rc,rr=inward?Rc-z:Rc+z;return v(rr*Math.sin(ang),y,rr*Math.cos(ang))}
+  if(mode==='rise')return v(x*Math.cos(tau),y,z+Math.abs(x)*Math.sin(tau));
+  return v(x,y,z)};
+ T.inv=mode==='wrap'&&inward;return T}
+
+/* one wing: a polar grid (so it can bend), cut cells give openwork, solid walls for printing */
+function wingParts(p,R,depth,root,phi,sgn,eyesN,g,r,T,zo,cut){
+ const rec=[],rr=()=>{const x=r();rec.push(x);return x},out=wingParts0(p,R,depth,root,phi,sgn,eyesN,g,rr,T,cut);
+ out.userData.part='wing';
+ out.userData.flat=z=>{let k=0;return wingParts0(p,R,depth,root,phi,sgn,eyesN,g,()=>rec[k++],makeT('flat',0,false,0,z===undefined?zo:z))};
+ return out}
+function wingParts0(p,R,depth,root,phi,sgn,eyesN,g,r,T,cut){
+ const P=PAL[p.pal],out=new THREE.Group(),span=SPAN[p.shape]*.8,N=48,Mr=9,c0=Math.cos(phi),s0=Math.sin(phi);
+ const L2G=(xl,yl)=>[sgn*(root[0]+xl*c0-yl*s0),root[1]+xl*s0+yl*c0];
+ const vt=[[...L2G(0,0),0,0]];
+ for(let j=1;j<=Mr;j++)for(let i=0;i<=N;i++){const u=i/N,a=(u-.5)*2*span,rr=rad(p,u)*R*j/Mr,xl=rr*Math.cos(a),yl=rr*Math.sin(a);vt.push([...L2G(xl,yl),xl,yl])}
+ const vi=(i,j)=>j===0?0:1+(j-1)*(N+1)+i,tris=[],OP=OPEN[p.open],bt=vt.map(q=>T(q[0],q[1],0)),gw=cut?bt.map(q=>cut(q.x,q.y,q.z,depth)):null;
+ for(let j=0;j<Mr;j++)for(let i=0;i<N;i++){if(OP&&OP(i,j))continue;const a=vi(i,j),b=vi(i+1,j),c=vi(i+1,j+1),d=vi(i,j+1);if(gw&&(gw[a]||gw[b]||gw[c]||gw[d]))continue;tris.push([a,d,c]);if(a!==b)tris.push([a,c,b])}
+ if((sgn<0)!==!!T.inv)tris.forEach(t=>{const q=t[1];t[1]=t[2];t[2]=q});
+ const tp=vt.map(q=>T(q[0],q[1],depth)),P3=[],UV=[],S=1.4*R;
+ const push=(arr,k)=>{P3.push(arr[k].x,arr[k].y,arr[k].z);UV.push(vt[k][2]/S,.5+vt[k][3]/(2*S))};
+ const es=new Set();tris.forEach(t=>{for(let k=0;k<3;k++)es.add(t[k]+'_'+t[(k+1)%3])});
+ tris.forEach(t=>{push(tp,t[0]);push(tp,t[1]);push(tp,t[2]);push(bt,t[0]);push(bt,t[2]);push(bt,t[1]);
+  for(let k=0;k<3;k++){const u=t[k],w=t[(k+1)%3];if(!es.has(w+'_'+u)){push(tp,u);push(bt,u);push(tp,w);push(tp,w);push(bt,u);push(bt,w)}}});
+ const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(P3,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(UV,2));
+ if(tris.length)out.add(new THREE.Mesh(geo,MAT));
+ const fg=new THREE.Group(),vh=depth*.5;
+ for(let i=8;i<N;i+=8){const u=i/N,a=(u-.5)*2*span,rr=rad(p,u)*R,m=L2G(rr*Math.cos(a)*.5,rr*Math.sin(a)*.5),
+   b=new THREE.Mesh(new THREE.BoxGeometry(rr,.05,vh,Math.max(2,Math.ceil(rr*10)),1,1),M(P.vein));
+  const ang=phi+a,rt=sgn>0?ang:Math.PI-ang;
+  if(cut&&[-.5,0,.5].some(f=>{const q=T(m[0]+f*rr*Math.cos(rt),m[1]+f*rr*Math.sin(rt),depth);return cut(q.x,q.y,q.z,0)}))continue;
+  b.userData.vein=1;b.position.set(m[0],m[1],depth+vh/2);b.rotation.z=rt;fg.add(b)}
+ for(let i=0;i<eyesN;i++){
+  let u,rr;
+  if(g.eplace==='center'){u=.5+(i-(eyesN-1)/2)*.12;rr=R*(.45+.15*(i%2))}
+  else if(g.eplace==='edge'){u=r();rr=rad(p,u)*R*.86}
+  else{u=range(r,.05,.25);rr=rad(p,u)*R*range(r,.35,.8)}
+  const a=(u-.5)*2*span,pp=L2G(rr*Math.cos(a),rr*Math.sin(a)),e=eyeRaised(g.etype,ER[g.esize]*R,P,depth,depth*.45,depth);
+  if(cut){const q=T(pp[0],pp[1],0);if(cut(q.x,q.y,q.z,ER[g.esize]*R+depth))continue}
+  e.position.set(pp[0],pp[1],0);fg.add(e)}
+ fg.updateMatrixWorld(true);
+ fg.traverse(o=>{if(!o.isMesh)return;const g2=o.geometry.clone();g2.applyMatrix4(o.matrixWorld);const pa=g2.attributes.position;
+  for(let i=0;i<pa.count;i++){const q=T(pa.getX(i),pa.getY(i),pa.getZ(i));pa.setXYZ(i,q.x,q.y,q.z)}
+  if(T.inv&&g2.index){const ix=g2.index.array;for(let i=0;i<ix.length;i+=3){const t=ix[i+1];ix[i+1]=ix[i+2];ix[i+2]=t}}
+  const mm=new THREE.Mesh(g2,o.material);mm.userData.vein=o.userData.vein;out.add(mm)});
+ return out}
+
+function frame(a,axis){const y=axis.clone().normalize(),x=new THREE.Vector3().crossVectors(y,a.n),q=new THREE.Quaternion();
+ return q.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x,y,a.n.clone()))}
+function addBody(inner,a,Rb,pal,axis,thick){
+ const grp=new THREE.Group(),mat=M(PAL[pal].vein);
+ const ell=(y,sx,sy,sz)=>{const m=new THREE.Mesh(new THREE.SphereGeometry(1,12,10),mat);m.position.set(0,y*Rb,0);m.scale.set(sx*Rb,sy*Rb,sz*Rb*thick);grp.add(m)};
+ ell(.12,.1,.17,.08);ell(-.27,.07,.3,.06);ell(.33,.05,.05,.05);
+ grp.quaternion.copy(frame(a,axis));grp.position.copy(a.p);grp.translateY(.095*Rb);grp.userData.off=.095*Rb;inner.add(grp)}
+/* Coil beads shrink along the coil, so the small ones stop touching their neighbours and would print floating in mid-air (the cuff gap and the gaps between turns cut the chain too). This fuses every bead into ONE solid: neighbours in the chain that do not overlap well get a short rod between them, then any group still separate is bridged to the nearest bead by the shortest rod, until nothing is loose. A rod is as thick as the smaller of the two beads it joins (never thicker), so it sits inside them at both ends. No bead is removed. */
+function joinBeads(beads,inner){
+ const n=beads.length,pos=beads.map(b=>v(b.rb*b.c,b.y,b.rb*b.s)),par=[...Array(n).keys()],find=x=>par[x]===x?x:(par[x]=find(par[x])),
+  dist=(a,b)=>pos[a].distanceTo(pos[b]),sum=(a,b)=>beads[a].br+beads[b].br;
+ const rod=(a,b)=>{par[find(a)]=find(b);const L=dist(a,b);if(L<1e-6)return;
+  const k=beads[a].br<beads[b].br?a:b,rr=beads[k].br*.95,m=new THREE.Mesh(new THREE.CylinderGeometry(rr,rr,L,8),beads[k].m);
+  m.position.copy(pos[a]).add(pos[b]).multiplyScalar(.5);m.quaternion.setFromUnitVectors(v(0,1,0),pos[b].clone().sub(pos[a]).normalize());inner.add(m)};
+ /* the 10x8 sphere facets sit inside the true sphere, so "touching" needs a real overlap (.9), not just contact */
+ for(let a=0;a<n;a++){
+  for(let b=a+1;b<n;b++)if(dist(a,b)<sum(a,b)*.9)par[find(a)]=find(b);
+  if(a+1<n&&beads[a+1].i===beads[a].i+1&&dist(a,a+1)>sum(a,a+1)*.6)rod(a,a+1)}
+ for(;;){let best=null,bd=1e9;
+  for(let a=0;a<n;a++)for(let b=a+1;b<n;b++)if(find(a)!==find(b)){const d=dist(a,b)-sum(a,b);if(d<bd){bd=d;best=[a,b]}}
+  if(!best)break;rod(best[0],best[1])}}
+
+/* the moth is the jewellery: body = coiled abdomen, swarm = moths linked head to tail, wings = wings wrapped into the band */
+function buildPiece(seed,ov){
+ const r=rngFrom(seed),g=makeGenes(r,ov),root=new THREE.Group(),inner=new THREE.Group(),cuff=g.form==='cuff',depth=g.wall*(cuff?.95:.55)*4/(fitDims(g)[0]+fitDims(g)[1]);
+ root.add(inner);
+ const Rb=cuff?.95:.55,br0=cuff?.12:.085,P=PAL[g.pal],mk=g.make,wrapMode=mk==='wings',inward=g.attach==='inner'||g.attach==='innerwrap';
+ const th0=r()*6.283,anchors=[],nrm=(c,s)=>inward?v(-c,0,-s):v(c,0,s),cu=cuff?1.5:1;
+ /* cuff gap: a wedge opposite the first moth, so that moth sits on top of the wrist and the opening is underneath. Beads and bodies inside it are left out; wings are cut cell by cell, so their own walls seal the cut edge. */
+ const wrapA=d=>Math.atan2(Math.sin(d),Math.cos(d)),gapOn=cuff&&g.gap>0,gh=gapOn?gapHalf(g):0;let gp=null;
+ const setGap=psi=>{g.gapPsi=psi+Math.PI;gp=gapOn?{c:g.gapPsi,h:gh}:null},inWin=(x,z,m)=>gp&&Math.abs(wrapA(Math.atan2(z,x)-gp.c))<gp.h+(m||0);
+ if(mk==='body'){
+  const per=cuff?40:28,turns=g.turns,pitch=cuff?.2:.16,total=per*turns,m1=M(P.w[1]),m2=M(P.vein),beads=[];setGap(th0+3/per*6.2832);
+  for(let i=0;i<=total;i++){const t=i/per,u=i/total,ang=th0+t*6.2832,br=br0*(1.6-1.25*u)*(1+.3*Math.sin(i*2.1+th0*2)),y=(t-turns/2)*pitch+Math.sin(i*1.3+th0)*br0*.5*u,rb=Rb*(1+g.wob*Math.sin(t*5.1+th0)+g.drift*u),c=Math.cos(ang),s=Math.sin(ang);
+   if(inWin(rb*c,rb*s,br/rb*.6))continue;
+   const m=new THREE.Mesh(new THREE.SphereGeometry(1,10,8),(g.stripe&&i%4<2)?m2:m1);m.position.set(rb*c,y,rb*s);m.scale.setScalar(br);inner.add(m);beads.push({c,s,y,br,rb,i,m:m.material});
+   if(i===3){const rr=inward?rb-br*.9:rb+br*.9;anchors.push({a:{p:v(rr*c,y,rr*s),n:nrm(c,s)},R:g.sc*cu,axis:v(-s,0,c)})}}
+  joinBeads(beads,inner);
+  if(g.eplace==='band')for(let k=0;k<g.eyes;k++){const b=beads[4+Math.floor(r()*(beads.length-4))];
+   inner.add(eyeBall(g.etype,ER[g.esize]*1.2,P,v((b.rb+b.br*.6)*b.c,b.y,(b.rb+b.br*.6)*b.s),v(b.c,0,b.s)))}}
+ else if(mk==='swarm'){
+  const k=g.nsw,base=6.2832*Rb/k/.95;
+  for(let i=0;i<k;i++){const ang=th0+(i+range(r,-.35,.35))*6.2832/k,c=Math.cos(ang),s=Math.sin(ang),size=base*pick(r,[.55,.8,1.2,1.7]),lay=r()<.3?1.22:1,yaw=range(r,-.6,.6);
+   const ax=v(-s*Math.cos(yaw),Math.sin(yaw),c*Math.cos(yaw));
+   anchors.push({a:{p:v(Rb*lay*c,range(r,-.25,.25)*size,Rb*lay*s),n:nrm(c,s)},R:size*g.sc*1.4,bs:size,thick:2.4,axis:ax})}}
+ else{
+  for(let m=0;m<g.moths;m++){const ang=r()*6.283,c=Math.cos(ang),s=Math.sin(ang),f=m?pick(r,[.5,.7,1]):1;
+   anchors.push({a:{p:v(Rb*c,range(r,-.1,.1),Rb*s),n:nrm(c,s)},R:Rb*2*g.sc*f,bs:g.sc*cu*.9*f,thick:1,axis:v(0,1,0),Rc:Rb*(1+.14*m),tilt:range(r,-.3,.3)})}}
+ if(mk!=='body')setGap(Math.atan2(anchors[0].a.p.z,anchors[0].a.p.x));
+ const specs=[];
+ anchors.forEach((an,ai)=>{an.id=ai;
+  const wpF=wingParams(r,g,1,g.sym==='broken'),wpH=wingParams(r,g,0,g.sym==='broken');
+  const seen={};
+  SLOTS[g.anat].forEach(([f,sg])=>{const key=f+'_'+sg,dup=seen[key];seen[key]=1;let wp=f?wpF:wpH,sc=1;
+   if(dup)wp=wingParams(r,g,f,true);
+   else if(sg<0){if(g.sym==='broken')wp=wingParams(r,g,f,true);else if(g.sym==='half'){wp={...wp,edge:pick(r,EDGES),pal:pick(r,KEYS)};sc=.6}}
+   if(r()<.45)sc*=pick(r,[.35,.6,1.5]);
+   specs.push({an,f,sg,wp,sc,dphi:dup?range(r,-.6,.6):0,graft:r()<.35})});
+  if(mk!=='body'&&seed!==101&&!inWin(an.a.p.x,an.a.p.z,.3*an.bs)){addBody(inner,an.a,an.bs,g.pal,an.axis,an.thick);inner.children[inner.children.length-1].userData.moth=an.id}});
+ const ec=g.eplace==='band'?0:g.eyes;
+ specs.forEach((w,j)=>{
+  const R=w.an.R*w.sc,mode=wrapMode?'wrap':g.attach==='rise'?'rise':'flat',a=w.an.a,Rc=w.an.Rc||Rb,zo=w.f?0:-depth*.5;
+  const T=makeT(mode,inward?Rc+.01:Rc-.01,inward,g.tau,zo),n=Math.floor(ec/specs.length)+(j<ec%specs.length?1:0);
+  const root0=w.f?[0,.15*R]:[0,-.05*R],phi0=(w.f?.45:-.55)+w.dphi;
+  const xf=node=>{if(wrapMode){node.rotation.z=w.an.tilt||0;node.rotation.y=Math.atan2(a.p.x,a.p.z);node.position.y=a.p.y}else{node.quaternion.copy(frame(a,w.an.axis));node.position.copy(a.p)}},
+   place=node=>{node.userData.moth=w.an.id;xf(node);inner.add(node)};
+  let cut=null;if(gp){const o=new THREE.Object3D(),q=new THREE.Vector3();xf(o);o.updateMatrix();cut=(x,y,z,m)=>{q.set(x,y,z).applyMatrix4(o.matrix);return inWin(q.x,q.z,m)}}
+  place(wingParts(w.wp,R,depth,root0,phi0,w.sg,n,g,r,T,zo,cut));
+  if(w.graft){const rr=R*range(r,.45,.8),aa=range(r,-.4,.4),c0=Math.cos(phi0),s0=Math.sin(phi0),xl=rr*Math.cos(aa),yl=rr*Math.sin(aa);
+   const T2=makeT(mode,inward?Rc+.01:Rc-.01,inward,g.tau,zo+depth*.6);
+   place(wingParts(wingParams(r,g,r()<.5,true),R*.5,depth,[root0[0]+xl*c0-yl*s0,root0[1]+xl*s0+yl*c0],phi0+aa+range(r,-.8,.8),w.sg,0,g,r,T2,zo+depth*.6,cut))}});
+ g.count=anchors.length;
+ const box=new THREE.Box3().setFromObject(inner),c=box.getCenter(new THREE.Vector3()),sz=box.getSize(new THREE.Vector3());
+ inner.position.sub(c);root.scale.setScalar(1.15/(Math.max(sz.x,sz.y,sz.z)/2));
+ return{root,inner,g}}
+
+/* STL export (zipped, since the page can only save allow-listed file types) */
+function verts(list){const vs=[],a=new THREE.Vector3();
+ list.forEach(([o,m])=>{const pos=o.geometry.attributes.position,idx=o.geometry.index,cnt=idx?idx.count:pos.count;
+  for(let i=0;i<cnt;i++){a.fromBufferAttribute(pos,idx?idx.getX(i):i).applyMatrix4(m);vs.push(a.x,a.y,a.z)}});return vs}
+function zmin(vs){let z=1e9;for(let i=2;i<vs.length;i+=3)z=Math.min(z,vs[i]);return z}
+function stlWrite(vs,minz){
+ const nt=vs.length/9,buf=new ArrayBuffer(84+nt*50),dv=new DataView(buf);dv.setUint32(80,nt,true);
+ const a=new THREE.Vector3(),b=new THREE.Vector3(),c=new THREE.Vector3(),n=new THREE.Vector3(),d=new THREE.Vector3();
+ for(let t=0;t<nt;t++){const o=t*9;
+  for(let k=2;k<9;k+=3)vs[o+k]-=minz;
+  a.set(vs[o],vs[o+1],vs[o+2]);b.set(vs[o+3],vs[o+4],vs[o+5]);c.set(vs[o+6],vs[o+7],vs[o+8]);
+  n.subVectors(b,a).cross(d.subVectors(c,a)).normalize();
+  let q=84+t*50;[n.x,n.y,n.z].forEach(x=>{dv.setFloat32(q,x||0,true);q+=4});
+  for(let k=0;k<9;k++){dv.setFloat32(q,vs[o+k],true);q+=4}}
+ return new Uint8Array(buf)}
+/* Cuff fit. The cuff is turned so the gap is underneath, then every vertex is bent onto a true oval of the chosen inner size: the lowest inner radius at each angle (smoothed a little, never above the real surface) is moved onto the oval, the wall keeps its thickness in mm, and the ring's length is spread along the oval by arc length so the moths keep their proportions. */
+function fitCuff(keep,g,W,D,Rb){
+ const PI=Math.PI,B=72,a=W/2,b=D/2,k=(W+D)/4/Rb,rot=-PI/2+(g.gapPsi||0),cr=Math.cos(rot),sr=Math.sin(rot);
+ keep.forEach(u=>{const vs=u.vs;for(let i=0;i<vs.length;i+=3){const x=vs[i],y=vs[i+1];vs[i]=x*cr-y*sr;vs[i+1]=x*sr+y*cr}});
+ /* lowest radius per angle bin, sampled along every triangle edge; bins with nothing in them are real breaks */
+ const raw=new Float64Array(B).fill(1e9),cov=new Uint8Array(B),bin=th=>Math.min(B-1,Math.floor((th+PI)/(2*PI)*B));
+ keep.forEach(u=>{const vs=u.vs;for(let i=0;i<vs.length;i+=9)for(let e=0;e<3;e++){const o=i+3*e,o2=i+3*((e+1)%3),x0=vs[o],y0=vs[o+1],dx=vs[o2]-x0,dy=vs[o2+1]-y0,n=Math.max(1,Math.min(16,Math.ceil(Math.hypot(dx,dy)/.04)));
+  for(let s=0;s<n;s++){const x=x0+dx*s/n,y=y0+dy*s/n,q=bin(Math.atan2(y,x)),r=Math.hypot(x,y);cov[q]=1;if(r<raw[q])raw[q]=r}}});
+ const fill=A=>A.map((v,i)=>{if(v<1e8)return v;let l=1,r=1;while(A[(i-l+B)%B]>1e8&&l<B)l++;while(A[(i+r)%B]>1e8&&r<B)r++;const v0=A[(i-l+B)%B],v1=A[(i+r)%B];return v0+(v1-v0)*l/(l+r)}),
+  fl=fill(Array.from(raw)),w=2,
+  lo=fl.map((_,i)=>{let q=1e9;for(let d=-w-1;d<=w+1;d++)q=Math.min(q,fl[(i+d+B)%B]);return q}),
+  rs=lo.map((_,i)=>{let s=0;for(let d=-w;d<=w;d++)s+=lo[(i+d+B)%B];return s/(2*w+1)}),
+  rsAt=th=>{const q=(th+PI)/(2*PI)*B-.5,i=Math.floor(q),f=q-i;return rs[(i+B)%B]*(1-f)+rs[(i+1+B)%B]*f};
+ /* oval by arc length: a quarter of the ring angle maps to a quarter of the perimeter */
+ const N=900,S=new Float64Array(N+1),Th=new Float64Array(N+1);
+ for(let i=1;i<=N;i++){const t=(i-.5)/N*PI/2;S[i]=S[i-1]+Math.hypot(a*Math.sin(t),b*Math.cos(t))*PI/2/N}
+ for(let i=0;i<=N;i++)Th[i]=i/N*PI/2;
+ const Q=S[N],tOf=s=>{let l=0,h=N;while(h-l>1){const m=(l+h)>>1;if(S[m]<=s)l=m;else h=m}return Th[l]+(Th[h]-Th[l])*(s-S[l])/(S[h]-S[l])},O=[0,0,0,0],
+  oval=th=>{const u=Math.abs(th),q=u>PI/2?PI-u:u,t=tOf(q/(PI/2)*Q),c=Math.cos(t),s=Math.sin(t),nl=Math.hypot(b*c,a*s);let px=a*c,py=b*s,nx=b*c/nl,ny=a*s/nl;if(u>PI/2){px=-px;nx=-nx}if(th<0){py=-py;ny=-ny}O[0]=px;O[1]=py;O[2]=nx;O[3]=ny};
+ keep.forEach(u=>{const vs=u.vs;for(let i=0;i<vs.length;i+=3){const x=vs[i],y=vs[i+1],th=Math.atan2(y,x),h=(Math.hypot(x,y)-rsAt(th))*k;oval(th);vs[i]=O[0]+O[2]*h;vs[i+1]=O[1]+O[3]*h;vs[i+2]*=k}});
+ /* measure the result: deepest the inner face reaches into the oval, and the narrowest clearance between material on the two sides of the underside */
+ let rmin=1e9,gl=-1e9,gr=1e9;
+ keep.forEach(u=>{const vs=u.vs;for(let i=0;i<vs.length;i+=3){const x=vs[i],y=vs[i+1],q=Math.hypot(x/a,y/b);if(q<rmin)rmin=q;if(y<-.15*b){if(x<0&&x>gl)gl=x;if(x>0&&x<gr)gr=x}}});
+ const hh=g.gap>0?gapHalf(g):0,inGap=q=>{const an=-PI+(q+.5)*2*PI/B;return hh>0&&Math.abs(Math.atan2(Math.sin(an+PI/2),Math.cos(an+PI/2)))<hh+2*PI/B};
+ let brk=0;for(let q=0;q<B;q++)if(!cov[q]&&!inGap(q)&&(cov[(q+B-1)%B]||inGap((q+B-1)%B)))brk++;
+ return{gap:(gl>-1e8&&gr<1e8)?gr-gl:NaN,intrude:Math.max(0,(1-rmin)*b),brk}}
+/* Exported in its printed curve (ring axis up). Rings are scaled to the chosen inner size; cuffs go through fitCuff. A fit report is returned. */
+function stlParts(p,mode){
+ p.root.updateMatrixWorld(true);
+ const g=p.g,cuff=g.form==='cuff',Rb=cuff?.95:.55,Fm=new THREE.Matrix4().makeRotationX(Math.PI/2),inv=new THREE.Matrix4().copy(p.inner.matrixWorld).invert(),
+  asm=o=>new THREE.Matrix4().multiplyMatrices(inv,o.matrixWorld).premultiply(Fm),
+  grab=(n,l)=>{n.traverse(o=>{if(o.isMesh)l.push([o,asm(o)])});return l},
+  kids=p.inner.children,isW=o=>o.userData.part==='wing',U=[],PI=Math.PI,
+  ids=[...new Set(kids.filter(isW).map(o=>o.userData.moth))],
+  dA=(a,b)=>Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)));
+ kids.filter(o=>!isW(o)&&o.userData.moth===undefined).forEach(n=>U.push({n:'ring-body',vs:verts(grab(n,[]))}));
+ ids.forEach((id,i)=>U.push({n:'moth-'+(i+1),vs:verts(kids.filter(o=>o.userData.moth===id).flatMap(n=>grab(n,[])))}));
+ const keep=U.filter(u=>u.vs.length),[W,D]=fitDims(g);
+ let rep=null,wall=g.wall;
+ if(cuff)rep=fitCuff(keep,g,W,D,Rb);
+ else{
+  const B=72,rin=Array(B).fill(1e9),bi=a=>Math.min(B-1,Math.floor((a+PI)/(2*PI)*B)),ang=b=>-PI+(b+.5)*2*PI/B;
+  keep.forEach(u=>{for(let i=0;i<u.vs.length;i+=3){const b=bi(Math.atan2(u.vs[i+1],u.vs[i])),r=Math.hypot(u.vs[i],u.vs[i+1]);if(r<rin[b])rin[b]=r}});
+  const win=c=>{let m=1e9;for(let b=0;b<B;b++)if(dA(ang(b),c)<.4&&rin[b]<m)m=rin[b];return m},
+   rx=Math.min(win(0),win(PI)),ry0=Math.min(win(PI/2),win(-PI/2)),ry=ry0>1e8?rx:ry0,
+   sx=W/2/rx,sy=D/2/ry,sz=(sx+sy)/2;
+  keep.forEach(u=>{for(let i=0;i<u.vs.length;i+=3){u.vs[i]*=sx;u.vs[i+1]*=sy;u.vs[i+2]*=sz}});
+  wall=g.wall*((sx+sy)/2)/(((W+D)/4)/Rb)}
+ let zmax=-1e9,x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;keep.forEach(u=>{for(let i=0;i<u.vs.length;i+=3){const x=u.vs[i],y=u.vs[i+1],z=u.vs[i+2];if(z>zmax)zmax=z;if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}});
+ const z0=Math.min(...keep.map(u=>zmin(u.vs))),G={};
+ keep.forEach(u=>{G[u.n]=(G[u.n]||[]).concat(u.vs)});
+ let note='';
+ if(cuff){
+  const open=g.gap>0,gm=rep.gap;
+  note=!open?', closed':isFinite(gm)?', gap ~'+Math.round(gm)+' mm':', gap not measurable (material on one side only)';
+  if(open&&isFinite(gm)&&gm<D-3)note+=' (too narrow to slip over the wrist)';
+  else if(open&&isFinite(gm)&&gm>W-5)note+=' (very wide, weak hold)';
+  if(W<=D)note+=' (opening should be wider than deep)';
+  if(rep.brk)note+=' (band may be broken in '+rep.brk+' place'+(rep.brk>1?'s':'')+')';
+  if(rep.intrude>.3)note+=' (inner face intrudes ~'+rep.intrude.toFixed(1)+' mm)'}
+ const info='#'+p.seed+': inner '+Math.round(W*10)/10+' x '+Math.round(D*10)/10+' mm'+(cuff?' oval':'')+note+', outer '+Math.round(x1-x0)+' x '+Math.round(y1-y0)+' mm, height '+Math.round(zmax-z0)+' mm, wall '+(cuff?'':'~')+wall.toFixed(1)+' mm'+(wall<1.5?' (thin for PLA)':''),
+  mk=(n,vs)=>({name:n+'.stl',bytes:stlWrite(vs,z0)});
+ if(mode==='info')return{info};
+ return{info,files:mode==='one'?[mk('moth-'+p.seed+'-one-piece',Object.values(G).reduce((a,b)=>a.concat(b),[]))]:Object.entries(G).map(([n,vs])=>mk(n,vs))}}
+function crc32(u){let c=-1;for(let i=0;i<u.length;i++){c^=u[i];for(let k=0;k<8;k++)c=(c>>>1)^(0xEDB88320&-(c&1))}return(c^-1)>>>0}
+function zipMany(fs){
+ const enc=new TextEncoder(),L=[],C=[];let off=0;
+ fs.forEach(f=>{const nm=enc.encode(f.name),d=f.bytes,crc=crc32(d),n=d.length,lh=new DataView(new ArrayBuffer(30)),ch=new DataView(new ArrayBuffer(46));
+  lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(12,0x21,true);lh.setUint32(14,crc,true);lh.setUint32(18,n,true);lh.setUint32(22,n,true);lh.setUint16(26,nm.length,true);
+  ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(14,0x21,true);ch.setUint32(16,crc,true);ch.setUint32(20,n,true);ch.setUint32(24,n,true);ch.setUint16(28,nm.length,true);ch.setUint32(42,off,true);
+  L.push(lh,nm,d);C.push(ch,nm);off+=30+nm.length+n});
+ const csz=C.reduce((t,x)=>t+x.byteLength,0),e=new DataView(new ArrayBuffer(22));
+ e.setUint32(0,0x06054b50,true);e.setUint16(8,fs.length,true);e.setUint16(10,fs.length,true);e.setUint32(12,csz,true);e.setUint32(16,off,true);
+ return new Blob([...L,...C,e])}
+function zipOne(name,data){
+ const nm=new TextEncoder().encode(name),crc=crc32(data),n=data.length,lh=new DataView(new ArrayBuffer(30)),ch=new DataView(new ArrayBuffer(46)),e=new DataView(new ArrayBuffer(22));
+ lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(12,0x21,true);lh.setUint32(14,crc,true);lh.setUint32(18,n,true);lh.setUint32(22,n,true);lh.setUint16(26,nm.length,true);
+ ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(14,0x21,true);ch.setUint32(16,crc,true);ch.setUint32(20,n,true);ch.setUint32(24,n,true);ch.setUint16(28,nm.length,true);
+ e.setUint32(0,0x06054b50,true);e.setUint16(8,1,true);e.setUint16(10,1,true);e.setUint32(12,46+nm.length,true);e.setUint32(16,30+nm.length+n,true);
+ return new Blob([lh,nm,data,ch,nm,e])}
+
+/* scene */
+const stage=document.getElementById('stage'),cv=document.getElementById('cv'),msg=document.getElementById('msg'),dlO=document.getElementById('dlO'),dlP=document.getElementById('dlP');
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(30,1,1,80);
+scene.add(new THREE.AmbientLight(0xffffff,.85));
+const L1=new THREE.DirectionalLight(0xffffff,1);L1.position.set(3,5,4);scene.add(L1);
+const L2=new THREE.DirectionalLight(0xffffff,.55);L2.position.set(-4,-2,-3);scene.add(L2);
+const L3=new THREE.DirectionalLight(0xffffff,.7);L3.position.set(-3,4,-5);scene.add(L3);
+const COUNT=1,CELL=3.2,pieces=[];let W=1,H=1,cols=4,rows=3,sel=0,seeds=[...Array(COUNT)].map((_,i)=>101+i*37);
+
+function place(){
+ cols=1;rows=1;
+ pieces.forEach((p,i)=>p.root.position.set((i%cols-(cols-1)/2)*CELL,-(Math.floor(i/cols)-(rows-1)/2)*CELL,0));
+ const t=Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
+ camera.position.z=Math.max((rows*CELL/2)/t,(cols*CELL/2)/(t*camera.aspect))*1.08;camera.lookAt(0,0,0)}
+function resize(){W=stage.clientWidth;H=stage.clientHeight;renderer.setSize(W,H,false);camera.aspect=W/H;camera.updateProjectionMatrix();place()}
+let infoT=0;
+/* live size report: same numbers as the STL export, refreshed after every change (debounced) */
+function showInfo(){clearTimeout(infoT);infoT=setTimeout(()=>{const p=pieces[sel];if(!p)return;try{const t=stlParts(p,'info').info;msg.textContent=t;msg.title=t}catch(e){console.error(e);msg.textContent=''}
+  try{document.getElementById('fit').textContent=fitLine(p.g)}catch(e){console.error(e);msg.textContent=''}},120)}
+function select(i){sel=i;pieces.forEach((p,j)=>p.cap.classList.toggle('sel',j===i));refreshPanel();showInfo()}
+function setPiece(i,seed,ov){ov=ov||{};
+ const old=pieces[i];
+ if(old){scene.remove(old.root);old.root.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material&&o.material.map)o.material.map.dispose()});old.cap.remove()}
+ const {root,inner,g}=buildPiece(seed,ov),cap=document.createElement('div');
+ cap.className='cap';cap.innerHTML='<i>#'+seed+'</i>';
+ stage.appendChild(cap);scene.add(root);
+ pieces[i]={root,inner,g,cap,seed,ov,spd:range(rngFrom(seed),.25,.55)}}
+function build(){seeds.forEach((s,i)=>setPiece(i,s));place();select(Math.min(sel,COUNT-1))}
+
+const V=new THREE.Vector3(),clock=new THREE.Clock();
+function tick(){
+ requestAnimationFrame(tick);const dt=clock.getDelta(),t=clock.elapsedTime;
+ pieces.forEach(p=>{
+  p.root.rotation.y+=dt*p.spd;p.root.rotation.x=.45+Math.sin(t*.5+p.seed)*.08;
+  V.set(p.root.position.x,p.root.position.y-1.5,0).project(camera);
+  p.cap.style.left=(V.x*.5+.5)*W+'px';p.cap.style.top=(-V.y*.5+.5)*H+'px'});
+ renderer.render(scene,camera)}
+
+cv.addEventListener('pointerdown',e=>{
+ const b=cv.getBoundingClientRect(),x=e.clientX-b.left,y=e.clientY-b.top;let best=0,bd=1e12;
+ pieces.forEach((p,i)=>{V.copy(p.root.position).project(camera);const dx=(V.x*.5+.5)*W-x,dy=(-V.y*.5+.5)*H-y,d=dx*dx+dy*dy;if(d<bd){bd=d;best=i}});
+ select(best)});
+document.getElementById('reroll').onclick=()=>{setPiece(sel,Math.floor(Math.random()*1e6),pieces[sel].ov);place();select(sel)};
+document.getElementById('newset').onclick=()=>{seeds=seeds.map(()=>Math.floor(Math.random()*1e6));build()};
+let DL=null;
+async function save(name,blob){
+ if(DL)return DL.save({filename:name,data:blob});
+ const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),3000)}
+async function exportPieces(mode){
+ const p=pieces[sel];
+ try{const r=stlParts(p,mode);await save('moth-'+p.seed+'-'+mode+'.zip',zipMany(r.files));msg.textContent=r.info}
+ catch(e){if(e&&e.code==='declined')msg.textContent='';else{console.error(e);msg.textContent='Download unavailable here'}}}
+dlO.onclick=()=>exportPieces('one');dlP.onclick=()=>exportPieces('place');
+(async()=>{try{DL=window.claude?await window.claude.use('downloads'):null}catch(e){DL=null}})();
+/* parametric controls */
+const O=(a)=>a.map(x=>[x,x]);
+const CTRL=[
+ ['sec','Ring'],
+ ['sel','form','Form',O(['finger','cuff'])],
+ ['sel','make','Moth makes the',[['body','Coiled body'],['swarm','Linked swarm'],['wings','Wrapped wings']]],
+ ['num','turns','Coil turns',1,4,1],['num','wob','Coil wobble',0,.4,.01],['num','drift','Coil drift',0,.8,.01],
+ ['num','nsw','Swarm moths',3,8,1],['num','moths','Wing-ring moths',1,3,1],
+ ['sec','Fit (mm)'],
+ ['sel','size','Size',[['S','S'],['M','M'],['L','L']]],['num','circ','Inner circumference (0 = by size)',0,250,.5],['num','cw','Inner width',0,80,.5],['num','cd','Inner depth',0,70,.5],
+ ['num','gap','Cuff gap',0,60,1],['num','wall','Wall',1,4,.1],
+ ['sec','Wings'],
+ ['sel','fshape','Forewing',O(SH_F)],['sel','hshape','Hindwing',O(SH_H)],['sel','edge','Edge',O(EDGES)],
+ ['num','k','Edge lobes',4,16,1],
+ ['sel','open','Openwork',[[0,'Solid'],['A','Filigree A'],['B','Filigree B'],['C','Veined filigree']]],
+ ['num','sc','Wing size',.4,1.4,.01],
+ ['sel','sym','Symmetry',O(['mirror','half','broken'])],
+ ['sel','anat','Wing count',[['pair','4 (normal)'],['odd1','1'],['odd3','3'],['odd5','5'],['many','7']]],
+ ['sel','attach','Attachment',[['perch','Perched flat'],['rise','Raised V'],['inner','Inside, flat'],['wrap','Wrapped'],['innerwrap','Wrapped inside']]],
+ ['num','tau','Raise angle',.2,1.4,.01],
+  ['sec','Eyes'],
+ ['num','eyes','Eye count',0,12,1],['sel','eplace','Placement',O(['center','edge','corner','band'])],
+ ['sel','esize','Size',O(['tiny','normal','giant'])],['sel','etype','Pupil',O(['round','slit','double'])]];
+const panel=document.getElementById('panel'),inputs={};let pend={},raf=0;
+const topRow=document.createElement('div');topRow.className='row2';
+topRow.innerHTML='<label>Seed <input id="seedIn" type="number" step="1"></label><input id="allBox" type="checkbox" hidden><button id="resetOv">Reset changes</button>';
+panel.appendChild(topRow);
+const seedIn=document.getElementById('seedIn'),allBox=document.getElementById('allBox');
+CTRL.forEach(c=>{
+ if(c[0]==='sec'){const h=document.createElement('div');h.className='sec';h.textContent=c[1];panel.appendChild(h);return}
+ const type=c[0],key=c[1],row=document.createElement('label'),sp=document.createElement('span'),out=document.createElement('output');let inp;
+ row.className='row';sp.textContent=c[2];row.appendChild(sp);
+ if(type==='sel'){inp=document.createElement('select');c[3].forEach(o=>{const e=document.createElement('option');e.value=String(o[0]);e.textContent=o[1];inp.appendChild(e)})}
+ else if(type==='num'){inp=document.createElement('input');inp.type='range';inp.min=c[3];inp.max=c[4];inp.step=c[5]}
+ else{inp=document.createElement('input');inp.type='checkbox'}
+ row.appendChild(inp);if(type==='num')row.appendChild(out);panel.appendChild(row);inputs[key]={inp,out,type};
+ inp.addEventListener('input',()=>{
+  let val=type==='chk'?inp.checked:type==='num'?Number(inp.value):inp.value;
+  if(key==='open'&&val==='0')val=0;
+  if(type==='num')out.textContent=inp.value;
+  pend[key]=val;if(!raf)raf=requestAnimationFrame(flush)})});
+function flush(){
+ raf=0;const t=allBox.checked?pieces.map((_,i)=>i):[sel];
+ t.forEach(i=>{const p=pieces[i];Object.assign(p.ov,pend);setPiece(i,p.seed,p.ov)});
+ pend={};place();select(sel)}
+function refreshPanel(){
+ const p=pieces[sel];if(!p)return;seedIn.value=p.seed;
+ for(const k in inputs){const {inp,out,type}=inputs[k],val=p.g[k];
+  if(type==='chk')inp.checked=!!val;else{inp.value=String(val);if(type==='num')out.textContent=String(Math.round(val*100)/100)}}}
+seedIn.onchange=()=>{const n=Math.floor(Number(seedIn.value));if(isFinite(n)){setPiece(sel,n,pieces[sel].ov);place();select(sel)}};
+document.getElementById('resetOv').onclick=()=>{const t=allBox.checked?pieces.map((_,i)=>i):[sel];t.forEach(i=>setPiece(i,pieces[i].seed,{}));place();select(sel)};
+document.getElementById('ctl').onclick=()=>{panel.hidden=!panel.hidden};
+panel.hidden=innerWidth<700;
+new ResizeObserver(resize).observe(stage);
+addEventListener('resize',resize);
+resize();build();tick();
+</script></body></html>
